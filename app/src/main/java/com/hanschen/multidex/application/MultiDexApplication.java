@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Created by Hans on 2016/8/23.
@@ -37,12 +39,14 @@ public class MultiDexApplication extends Application {
             return;
         }
 
-        if (!isMultiDexInstalled(base)) {
-            waitForDexInstall(base);
+        if (!isVMMultiDexCapable()) {
+            if (!isMultiDexInstalled(base)) {
+                waitForDexInstall(base);
+            }
+            long start = System.currentTimeMillis();
+            MultiDex.install(base);
+            Log.d("Hans", "MultiDexApplication#MultiDex.install: " + (System.currentTimeMillis() - start));
         }
-        long start = System.currentTimeMillis();
-        MultiDex.install(base);
-        Log.d("Hans", "MultiDexApplication#MultiDex.install: " + (System.currentTimeMillis() - start));
     }
 
     @Override
@@ -65,6 +69,24 @@ public class MultiDexApplication extends Application {
         SharedPreferences sp = context.getSharedPreferences(getPreferencesFileName(context), MODE_MULTI_PROCESS);
         String saveValue = sp.getString(KEY_DEX2_SHA1, "");
         return flag.equals(saveValue);
+    }
+
+    private boolean isVMMultiDexCapable() {
+        boolean isMultiDexCapable = false;
+        String versionString = System.getProperty("java.vm.version");
+        if (versionString != null) {
+            Matcher matcher = Pattern.compile("(\\d+)\\.(\\d+)(\\.\\d+)?").matcher(versionString);
+            if (matcher.matches()) {
+                try {
+                    int e = Integer.parseInt(matcher.group(1));
+                    int minor = Integer.parseInt(matcher.group(2));
+                    isMultiDexCapable = e > 2 || e == 2 && minor >= 1;
+                } catch (NumberFormatException ignore) {
+                }
+            }
+        }
+
+        return isMultiDexCapable;
     }
 
     private String get2thDexSHA1(Context context) {
