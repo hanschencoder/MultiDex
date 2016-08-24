@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.os.Build;
 import android.support.multidex.MultiDex;
 import android.util.Log;
@@ -16,6 +17,7 @@ import com.hanschen.multidex.utils.PackageUtil;
 
 import org.xutils.x;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
@@ -26,41 +28,43 @@ import java.util.jar.Manifest;
  */
 public class MultiDexApplication extends Application {
 
-    public static final String KEY_DEX2_SHA1 = "dex2-SHA1-Digest";
-    private Context mContext;
+    private static final String KEY_DEX2_SHA1 = "dex2-SHA1-Digest";
 
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
-        if (!isMiniProcess() && Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            if (needWait(base)) {
-                waitForDexOpt(base);
-            }
-            long start = System.currentTimeMillis();
-            MultiDex.install(base);
-            Log.d("Hans", "MultiDexApplication#MultiDex.install: " + (System.currentTimeMillis() - start));
+        if (isDexInstallProcess()) {
+            return;
         }
+
+        if (!isMultiDexInstalled(base)) {
+            waitForDexInstall(base);
+        }
+        long start = System.currentTimeMillis();
+        MultiDex.install(base);
+        Log.d("Hans", "MultiDexApplication#MultiDex.install: " + (System.currentTimeMillis() - start));
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
-        if (isMiniProcess()) {
+        if (isDexInstallProcess()) {
             return;
         }
-        mContext = MultiDexApplication.this;
+
+        //do something
         x.Ext.init(this);
     }
 
-    private boolean isMiniProcess() {
-        return getCurProcessName(this).contains(":mini");
+    private boolean isDexInstallProcess() {
+        return getCurProcessName(this).contains(":dexInstall");
     }
 
-    private boolean needWait(Context context) {
+    private boolean isMultiDexInstalled(Context context) {
         String flag = get2thDexSHA1(context);
-        SharedPreferences sp = context.getSharedPreferences(PackageUtil.getPackageInfo(context).versionName, MODE_MULTI_PROCESS);
+        SharedPreferences sp = context.getSharedPreferences(getPreferencesFileName(context), MODE_MULTI_PROCESS);
         String saveValue = sp.getString(KEY_DEX2_SHA1, "");
-        return !flag.equals(saveValue);
+        return flag.equals(saveValue);
     }
 
     private String get2thDexSHA1(Context context) {
@@ -72,33 +76,35 @@ public class MultiDexApplication extends Application {
             Map<String, Attributes> map = mf.getEntries();
             Attributes a = map.get("classes2.dex");
             return a.getValue("SHA1-Digest");
-        } catch (Exception e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
         return "";
     }
 
+    private String getPreferencesFileName(Context context) {
+        PackageInfo packageInfo = PackageUtil.getPackageInfo(context);
+        return packageInfo.versionName;
+    }
+
     public void installFinish(Context context) {
-        SharedPreferences sp = context.getSharedPreferences(PackageUtil.getPackageInfo(context).versionName, MODE_MULTI_PROCESS);
-        sp.edit().putString(KEY_DEX2_SHA1, get2thDexSHA1(context)).apply();
+        SharedPreferences sp = context.getSharedPreferences(getPreferencesFileName(context), MODE_MULTI_PROCESS);
+        sp.edit().putString(KEY_DEX2_SHA1, get2thDexSHA1(context)).commit(); //do not use apply here
     }
 
 
-    public static String getCurProcessName(Context context) {
-        try {
-            int pid = android.os.Process.myPid();
-            ActivityManager mActivityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
-            for (ActivityManager.RunningAppProcessInfo appProcess : mActivityManager.getRunningAppProcesses()) {
-                if (appProcess.pid == pid) {
-                    return appProcess.processName;
-                }
+    private static String getCurProcessName(Context context) {
+        int pid = android.os.Process.myPid();
+        ActivityManager mActivityManager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningAppProcessInfo appProcess : mActivityManager.getRunningAppProcesses()) {
+            if (appProcess.pid == pid) {
+                return appProcess.processName;
             }
-        } catch (Exception ignore) {
         }
         return "";
     }
 
-    public void waitForDexOpt(Context context) {
+    private void waitForDexInstall(Context context) {
         Intent intent = new Intent();
         ComponentName componentName = new ComponentName("com.hanschen.multidex", WelcomeActivity.class.getName());
         intent.setComponent(componentName);
@@ -110,7 +116,7 @@ public class MultiDexApplication extends Application {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.HONEYCOMB_MR1) {
             waitTime = 20 * 1000;
         }
-        while (needWait(context)) {
+        while (!isMultiDexInstalled(context)) {
             try {
                 long nowWait = System.currentTimeMillis() - startWait;
                 if (nowWait >= waitTime) {

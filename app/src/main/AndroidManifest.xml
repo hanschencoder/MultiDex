@@ -27,7 +27,7 @@
             android:alwaysRetainTaskState="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
-            android:process=":mini"
+            android:process=":dexInstall"
             android:screenOrientation="portrait"/>
     </application>
 
