@@ -15,7 +15,6 @@ import android.util.Log;
 import com.hanschen.multidex.WelcomeActivity;
 import com.hanschen.multidex.utils.PackageUtil;
 
-import org.xutils.x;
 
 import java.io.IOException;
 import java.util.Map;
@@ -55,9 +54,6 @@ public class MultiDexApplication extends Application {
         if (isDexInstallProcess()) {
             return;
         }
-
-        //do something
-        x.Ext.init(this);
     }
 
     private boolean isDexInstallProcess() {
